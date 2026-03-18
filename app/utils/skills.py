@@ -19,14 +19,26 @@ SKILL_KEYWORDS = [
     "dbt",
     "postgres",
     "postgresql",
+    "react",
+    "typescript",
+    "kubernetes",
+    "selenium",
+    "pytorch",
 ]
 
 
 ROLE_RULES: list[tuple[str, list[str]]] = [
     ("Data", ["data engineer", "data engineering", "etl", "analytics engineer", "data platform"]),
-    ("ML", ["machine learning", "ml engineer", "data scientist", "llm", "nlp"]),
+    ("ML", ["machine learning", "ml engineer", "data scientist", "llm", "nlp", "ai engineer"]),
     ("Analyst", ["data analyst", "bi analyst", "business intelligence", "analytics", "reporting"]),
-    ("Backend", ["backend", "api", "microservice", "server-side"]),
+    ("Backend", ["backend", "api", "microservice", "server-side", "backend engineer"]),
+    ("Frontend", ["frontend", "front-end", "front end", "react", "vue", "angular", "ui engineer", "web developer"]),
+    ("DevOps", ["devops", "dev ops", "sre", "site reliability", "platform engineer", "infrastructure"]),
+    ("Full-stack", ["full-stack", "full stack", "fullstack", "full stack developer"]),
+    ("Mobile", ["mobile developer", "ios developer", "android developer", "react native", "flutter"]),
+    ("QA", ["qa engineer", "quality assurance", "test engineer", "sdet", "automation testing"]),
+    ("Product", ["product manager", "product owner", "technical pm"]),
+    ("Security", ["security engineer", "cybersecurity", "application security", "devsecops"]),
 ]
 
 

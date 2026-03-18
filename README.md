@@ -1,4 +1,4 @@
-# Job Market Intelligence Pipeline
+# Job Market Data Engineering Pipeline
 
 End-to-end (batch + streaming) data engineering pipeline for tech job postings:
 
@@ -9,24 +9,8 @@ End-to-end (batch + streaming) data engineering pipeline for tech job postings:
 
 ## Architecture
 
-```mermaid
-flowchart LR
-  remotive[RemotiveAPI] --> batchExtract[batchExtract]
-  csvFile[LocalCSV] --> batchExtract
-  batchExtract --> transform[transformNormalizeDedupeEnrich]
-  transform --> staging[(Postgres.jobs_staging)]
-  staging --> merge[(Postgres.jobs_clean)]
-  merge --> metrics[(Postgres.daily_metrics)]
+![Architecture](https://i.imgur.com/XrsLXkX.png)
 
-  remotive --> producer[kafkaProducerPollNew]
-  producer --> kafka[(Kafka.jobs_live)]
-  kafka --> consumer[kafkaConsumerInsert]
-  consumer --> streamTable[(Postgres.jobs_stream)]
-
-  merge --> dashboard[StreamlitDashboard]
-  metrics --> dashboard
-  streamTable --> dashboard
-```
 
 ## Tech stack (free/open-source)
 - Python, requests, pandas
@@ -36,89 +20,57 @@ flowchart LR
 - Docker Compose
 - pytest
 
-## Setup
+## What this pipeline does
 
-1) Create a local `.env` (do not commit it). Start from `.env.example`.
+This project collects tech job postings and turns them into simple, queryable analytics.
 
-2) Start the stack:
+- **Batch (ETL)**:
+  - Extract jobs from **Remotive API** and from the local **CSV**.
+  - Transform: normalize both sources into one schema, deduplicate jobs, extract skills, and classify role/seniority.
+  - Load into Postgres:
+    - `jobs_staging` (temporary batch load)
+    - `jobs_clean` (final cleaned/deduped/enriched table used by the dashboard)
+    - `daily_metrics` (aggregations per day for fast dashboard queries)
 
-```bash
-docker compose up --build
-```
+- **Streaming (Kafka)**:
+  - A producer polls Remotive periodically and publishes only new jobs to Kafka topic `jobs_live`.
+  - A consumer reads `jobs_live` and writes those events into Postgres table `jobs_stream`.
 
-3) Open the dashboard:
-- `http://localhost:8501`
+- **Dashboard (Streamlit)**:
+  - Reads from Postgres and displays totals, trends over time, roles, companies, and skills.
 
-## Step-by-step lifecycle (recommended demo flow)
+## Setup & Run
 
-1) Start infra (Postgres + Kafka):
+| Step | Command | Purpose |
+|------|---------|---------|
+| 1 | `docker compose up -d postgres zookeeper kafka` | Start Postgres, Zookeeper, Kafka |
+| 2 | `docker compose run --rm -e FULL_REFRESH=1 batch` | Load jobs from API + CSV |
+| 3 | `docker compose up -d app` | Start dashboard |
+| 4 | Open http://localhost:8501 | View dashboard |
+| - | `docker compose up producer` (terminal 1) | Optional: streaming producer |
+| - | `docker compose up consumer` (terminal 2) | Optional: streaming consumer |
+| - | `docker compose run --rm app pytest -q` | Run tests |
+| - | `docker compose down` | Stop all containers |
+| - | `docker compose down -v` | Stop all containers + delete data |
 
-```bash
-docker compose up -d postgres zookeeper kafka
-```
-
-2) Run the batch pipeline once (loads `jobs_clean` + `daily_metrics`):
-
-```bash
-docker compose run --rm batch
-```
-
-3) Start the dashboard:
-
-```bash
-docker compose up --build app
-```
-
-4) Start streaming ingestion (optional, in 2 terminals):
-
-```bash
-docker compose up --build producer
-```
-
-```bash
-docker compose up --build consumer
-```
-
-5) Tear down:
-
-```bash
-docker compose down
-```
-
-## Local (non-Docker) option: virtual environment
-
-```bash
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-pytest -q
-```
-
-## Run batch ETL
-
-```bash
-docker compose run --rm batch
-```
-
-## Run streaming ingestion
-
-In two terminals:
-
-```bash
-docker compose up --build producer
-```
-
-```bash
-docker compose up --build consumer
-```
-
-## Run tests
-
-```bash
-docker compose run --rm app pytest -q
-```
+**Local (no Docker):** `python -m venv .venv` → activate → `pip install -r requirements.txt` → `pytest -q`
 
 ## Data sources
-- Remotive Jobs API (public JSON API)
+- Remotive Jobs API (public API)
 - Local CSV file at `data/raw/jobs.csv`
+
+## Project structure
+
+- **`app/`**: data engineering pipeline (etl, dashboard, logging)
+  - **`app/pipeline/`**: batch ETL (`extract.py`, `transform.py`, `load.py`, `run_batch.py`)
+  - **`app/streaming/`**: Kafka producer/consumer (`producer.py`, `consumer.py`)
+  - **`app/dashboard/`**: Streamlit UI (`dashboard.py`)
+  - **`app/config/`**: settings + DB connection helpers
+  - **`app/utils/`**: logging, hashing/date helpers, skills/role classification rules
+- **`db/`**: SQL files
+  - `schema.sql` creates tables/indexes
+  - `queries.sql` contains example queries used for analysis
+- **`data/`**: local data sources
+  - `data/raw/jobs.csv` is the file-based ingestion source
+- **`tests/`**: pytest unit tests (transformations, parsing, SQL strings)
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import pandas as pd
 from sqlalchemy import Engine, text
 
@@ -8,6 +10,10 @@ from app.utils.logger import get_logger
 
 
 logger = get_logger("pipeline.load")
+
+
+def _full_refresh() -> bool:
+    return os.getenv("FULL_REFRESH", "").lower() in ("1", "true", "yes")
 
 
 def truncate_and_load_staging(engine: Engine, df: pd.DataFrame) -> None:
@@ -140,6 +146,10 @@ def recompute_daily_metrics(engine: Engine) -> None:
 
 def run_load(df: pd.DataFrame) -> None:
     engine = get_engine()
+    if _full_refresh():
+        with engine.begin() as conn:
+            conn.execute(text("TRUNCATE TABLE jobs_clean;"))
+        logger.info("full_refresh", extra={"extra": {"jobs_clean_truncated": True}})
     logger.info("loading_staging", extra={"extra": {"rows": int(df.shape[0])}})
     truncate_and_load_staging(engine, df)
     logger.info("upserting_jobs_clean")
