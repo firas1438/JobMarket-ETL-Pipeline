@@ -11,7 +11,6 @@ End-to-end (batch + streaming) data engineering pipeline for tech job postings:
 
 ![Architecture](https://i.imgur.com/XrsLXkX.png)
 
-
 ## Tech stack (free/open-source)
 - Python, requests, pandas
 - PostgreSQL
@@ -73,4 +72,12 @@ This project collects tech job postings and turns them into simple, queryable an
 - **`data/`**: local data sources
   - `data/raw/jobs.csv` is the file-based ingestion source
 - **`tests/`**: pytest unit tests (transformations, parsing, SQL strings)
+
+## Dashboard
+
+This is an example view of the Streamlit dashboard once the pipeline has loaded data and the app is running on `http://localhost:8501`.
+
+![Streamlit dashboard](https://i.imgur.com/c8MVNiJ.png)
+
+
 

@@ -11,8 +11,8 @@ from app.utils.logger import get_logger
 logger = get_logger("dashboard")
 
 
-st.set_page_config(page_title="Job Market Intelligence", layout="wide")
-st.title("Job Market Intelligence Dashboard")
+st.set_page_config(page_title="Job Market Analysis", layout="wide")
+st.title("Job Market Analysis Dashboard")
 
 engine = get_engine()
 
