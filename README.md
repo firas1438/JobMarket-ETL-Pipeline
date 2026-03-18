@@ -77,7 +77,7 @@ This project collects tech job postings and turns them into simple, queryable an
 
 This is an example view of the Streamlit dashboard once the pipeline has loaded data and the app is running on `http://localhost:8501`.
 
-![Streamlit dashboard](https://i.imgur.com/c8MVNiJ.png)
+![Streamlit dashboard](https://i.imgur.com/OzRcMsZ.png)
 
 
 
