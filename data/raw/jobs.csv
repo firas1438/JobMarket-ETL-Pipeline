@@ -1,0 +1,4 @@
+job_id,source,title,company,location,is_remote,category,publication_date,job_url,description
+csv-1,csv,Data Engineer,ExampleCorp,Worldwide,true,Software Development,2026-03-01,https://example.com/jobs/1,"Build ETL pipelines with Python, SQL, Docker, and Kafka."
+csv-2,csv,Backend Engineer,WebCo,Europe,false,Software Development,2026-03-02,https://example.com/jobs/2,"Design APIs using Python and PostgreSQL; deploy with Docker."
+csv-3,csv,Data Analyst,AnalyticsLtd,Remote,true,Data,2026-03-03,https://example.com/jobs/3,"Analyze data using SQL and Tableau; build dashboards."
