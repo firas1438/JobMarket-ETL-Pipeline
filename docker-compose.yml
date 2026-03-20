@@ -77,6 +77,19 @@ services:
       - ./app:/app/app
     command: ["python", "-m", "app.pipeline.run_batch"]
 
+  batch_scheduler:
+    build: .
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+      - ./app:/app/app
+    restart: unless-stopped
+    command: ["python", "-m", "app.pipeline.scheduler"]
+
   producer:
     build: .
     env_file:

@@ -7,9 +7,26 @@ End-to-end (batch + streaming) data engineering pipeline for tech job postings:
 - **Storage**: PostgreSQL tables (`jobs_staging`, `jobs_clean`, `jobs_stream`, `daily_metrics`).
 - **Visualization**: Streamlit dashboard reading directly from Postgres.
 
+## What this pipeline does
+
+This project applies core data engineering principles through an end-to-end ETL architecture. It combines batch and streaming ingestion, enforces data quality through normalization and deduplication, and delivers reliable curated datasets for analytics. The pipeline is built for reproducibility (Docker), operational robustness (logging, retries, tests), and maintainability (modular components for ingestion, transformation, loading, and visualization).
+
 ## Architecture
 
 ![Architecture](https://i.imgur.com/XrsLXkX.png)
+
+## General data lifecycle
+
+1. Ingest jobs (API + CSV for batch, API for streaming).
+2. Transform, normalize, clean, deduplicate, and enrich data.
+3. Load into Postgres (`jobs_staging`, `jobs_clean`, `jobs_stream`).
+4. Compute daily aggregates in `daily_metrics`.
+5. Streamlit reads Postgres and shows dashboard metrics.
+6. Repeat via `batch_scheduler` (scheduled batch) and producer/consumer (near-real-time stream).
+
+## Data sources
+- Remotive Jobs API (public API)
+- Local CSV file at `data/raw/jobs.csv`
 
 ## Tech stack (free/open-source)
 - Python, requests, pandas
@@ -19,44 +36,24 @@ End-to-end (batch + streaming) data engineering pipeline for tech job postings:
 - Docker Compose
 - pytest
 
-## What this pipeline does
-
-This project collects tech job postings and turns them into simple, queryable analytics.
-
-- **Batch (ETL)**:
-  - Extract jobs from **Remotive API** and from the local **CSV**.
-  - Transform: normalize both sources into one schema, deduplicate jobs, extract skills, and classify role/seniority.
-  - Load into Postgres:
-    - `jobs_staging` (temporary batch load)
-    - `jobs_clean` (final cleaned/deduped/enriched table used by the dashboard)
-    - `daily_metrics` (aggregations per day for fast dashboard queries)
-
-- **Streaming (Kafka)**:
-  - A producer polls Remotive periodically and publishes only new jobs to Kafka topic `jobs_live`.
-  - A consumer reads `jobs_live` and writes those events into Postgres table `jobs_stream`.
-
-- **Dashboard (Streamlit)**:
-  - Reads from Postgres and displays totals, trends over time, roles, companies, and skills.
-
 ## Setup & Run
 
 | Step | Command | Purpose |
 |------|---------|---------|
 | 1 | `docker compose up -d postgres zookeeper kafka` | Start Postgres, Zookeeper, Kafka |
-| 2 | `docker compose run --rm -e FULL_REFRESH=1 batch` | Load jobs from API + CSV |
+| 2 | `docker compose up -d batch_scheduler` | Run scheduled batch ingestion |
 | 3 | `docker compose up -d app` | Start dashboard |
 | 4 | Open http://localhost:8501 | View dashboard |
 | - | `docker compose up producer` (terminal 1) | Optional: streaming producer |
 | - | `docker compose up consumer` (terminal 2) | Optional: streaming consumer |
+| - | `docker compose run --rm -e FULL_REFRESH=1 batch` | Manual/on-demand batch run (testing, debugging, maintenance, full refresh) |
 | - | `docker compose run --rm app pytest -q` | Run tests |
 | - | `docker compose down` | Stop all containers |
 | - | `docker compose down -v` | Stop all containers + delete data |
 
 **Local (no Docker):** `python -m venv .venv` → activate → `pip install -r requirements.txt` → `pytest -q`
 
-## Data sources
-- Remotive Jobs API (public API)
-- Local CSV file at `data/raw/jobs.csv`
+**Batch modes:** `batch_scheduler` is the default ongoing mode and repeats batch every `BATCH_INTERVAL_SECONDS` (default `1800`, i.e., 30 minutes). `batch` is one-shot and intended for manual/on-demand operations.
 
 ## Project structure
 
@@ -78,6 +75,3 @@ This project collects tech job postings and turns them into simple, queryable an
 This is an example view of the Streamlit dashboard once the pipeline has loaded data and the app is running on `http://localhost:8501`.
 
 ![Streamlit dashboard](https://i.imgur.com/OzRcMsZ.png)
-
-
-
