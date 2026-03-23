@@ -30,7 +30,7 @@ This project applies core data engineering principles through an end-to-end ETL 
 
 ## Tech stack (free/open-source)
 - Python, requests, pandas
-- Apache Spark (pyspark) for scalable batch transformations
+- Apache Spark (pyspark)
 - PostgreSQL
 - Apache Kafka (+ Zookeeper)
 - Streamlit
