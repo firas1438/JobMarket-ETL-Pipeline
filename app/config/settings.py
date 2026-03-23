@@ -53,6 +53,9 @@ class Settings:
     # Unused by default (batch uses max_pages); left for backward compatibility.
     adzuna_max_jobs: int = 0
 
+    # Use Spark for core dataframe operations (e.g., deduplication) when available.
+    use_spark_dedupe: bool = os.getenv("USE_SPARK_DEDUPE", "1").lower() in ("1", "true", "yes")
+
 
 settings = Settings()
 

@@ -13,12 +13,12 @@ This project applies core data engineering principles through an end-to-end ETL 
 
 ## Architecture
 
-![Architecture](https://i.imgur.com/XrsLXkX.png)
+![Architecture](https://i.imgur.com/WAdMAgY.png)
 
 ## General data lifecycle
 
 1. Ingest jobs (API + CSV for batch, API for streaming).
-2. Transform, normalize, clean, deduplicate, and enrich data.
+2. Transform, normalize, clean, deduplicate (Spark), and enrich data.
 3. Load into Postgres (`jobs_staging`, `jobs_clean`, `jobs_stream`).
 4. Compute daily aggregates in `daily_metrics`.
 5. Streamlit reads Postgres and shows dashboard metrics.
@@ -30,6 +30,7 @@ This project applies core data engineering principles through an end-to-end ETL 
 
 ## Tech stack (free/open-source)
 - Python, requests, pandas
+- Apache Spark (pyspark) for scalable batch transformations
 - PostgreSQL
 - Apache Kafka (+ Zookeeper)
 - Streamlit

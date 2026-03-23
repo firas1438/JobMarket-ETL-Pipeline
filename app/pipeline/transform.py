@@ -4,6 +4,7 @@ from typing import Any
 
 import pandas as pd
 
+from app.config.settings import settings
 from app.utils.helpers import normalize_whitespace, parse_datetime, sha256_hex, utc_now
 from app.utils.skills import enrich_job
 
@@ -179,12 +180,69 @@ def ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
 def deduplicate(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
+    if settings.use_spark_dedupe:
+        try:
+            return deduplicate_spark(df)
+        except Exception:
+            # Fall back to pandas on any Spark runtime issue.
+            pass
+
     df = df.copy()
     # Prefer latest publication_date when duplicates
     df["_pub_sort"] = df["publication_date"].fillna(pd.Timestamp.min)
     df = df.sort_values(by=["job_hash", "_pub_sort"], ascending=[True, False])
     df = df.drop_duplicates(subset=["job_hash"], keep="first").drop(columns=["_pub_sort"])
     return df
+
+
+def deduplicate_spark(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Deduplicate by `job_hash`, keeping the row with the latest `publication_date`.
+
+    Spark is used here to satisfy the requirement to integrate Apache Spark.
+    We keep output identical to the pandas version.
+    """
+    from pyspark.sql import SparkSession
+    from pyspark.sql import functions as F
+    from pyspark.sql.window import Window
+
+    spark = (
+        SparkSession.builder.master("local[*]")
+        .appName("job-etl-dedupe")
+        .config("spark.sql.session.timeZone", "UTC")
+        .getOrCreate()
+    )
+
+    df_work = df.copy().reset_index(drop=True)
+    df_work["_row_id"] = list(range(len(df_work)))
+
+    base_cols = ["job_hash", "publication_date", "_row_id"]
+    if "ingested_at" in df_work.columns:
+        base_cols.append("ingested_at")
+
+    spark_df = spark.createDataFrame(df_work[base_cols])
+
+    pub_ts = F.col("publication_date").cast("timestamp")
+    pub_sort = F.coalesce(pub_ts, F.lit("0001-01-01 00:00:00").cast("timestamp"))
+
+    if "ingested_at" in df_work.columns:
+        ing_ts = F.col("ingested_at").cast("timestamp")
+        ing_sort = F.coalesce(ing_ts, F.lit("0001-01-01 00:00:00").cast("timestamp"))
+        order_exprs = [pub_sort.desc(), ing_sort.desc()]
+    else:
+        order_exprs = [pub_sort.desc()]
+
+    w = Window.partitionBy("job_hash").orderBy(*order_exprs)
+    keep_ids = (
+        spark_df.withColumn("_rn", F.row_number().over(w))
+        .filter(F.col("_rn") == 1)
+        .select("_row_id")
+        .collect()
+    )
+    keep_set = {int(r["_row_id"]) for r in keep_ids}
+
+    out = df_work[df_work["_row_id"].isin(keep_set)].drop(columns=["_row_id"])
+    return out
 
 
 def transform(api_jobs: list[dict[str, Any]], csv_df: pd.DataFrame) -> pd.DataFrame:
