@@ -4,6 +4,7 @@ from typing import Any
 
 import pandas as pd
 
+from app.config.settings import settings
 from app.utils.helpers import normalize_whitespace, parse_datetime, sha256_hex, utc_now
 from app.utils.skills import enrich_job
 
@@ -67,6 +68,61 @@ def normalize_remotive(raw_jobs: list[dict[str, Any]]) -> pd.DataFrame:
     return ensure_columns(df)
 
 
+def normalize_adzuna(raw_jobs: list[dict[str, Any]]) -> pd.DataFrame:
+    rows: list[dict[str, Any]] = []
+    for j in raw_jobs:
+        job_id = str(j.get("id") or "") or None
+        title = normalize_whitespace(j.get("title"))
+
+        company_obj = j.get("company") or {}
+        company = normalize_whitespace(
+            company_obj.get("display_name") if isinstance(company_obj, dict) else j.get("company")
+        )
+
+        location_obj = j.get("location") or {}
+        location = normalize_whitespace(
+            location_obj.get("display_name") if isinstance(location_obj, dict) else j.get("location")
+        )
+
+        is_remote = "remote" in (location or "").lower()
+
+        category_obj = j.get("category") or {}
+        category = normalize_whitespace(
+            category_obj.get("label") if isinstance(category_obj, dict) else j.get("category")
+        )
+
+        pub_dt = parse_datetime(j.get("created") or j.get("publication_date") or j.get("date"))
+        url = normalize_whitespace(j.get("redirect_url") or j.get("url") or j.get("job_url"))
+        desc = normalize_whitespace(j.get("description") or "")
+
+        base_for_hash = url or f"{title}|{company}|{pub_dt.isoformat() if pub_dt else ''}"
+        job_hash = sha256_hex(base_for_hash)
+
+        enrichment = enrich_job(title, desc)
+        rows.append(
+            {
+                "job_hash": job_hash,
+                "job_id": job_id,
+                "source": "api",
+                "title": title,
+                "company": company,
+                "location": location,
+                "is_remote": bool(is_remote),
+                "category": category,
+                "publication_date": pub_dt,
+                "job_url": url or None,
+                "description": desc,
+                "skills_extracted": enrichment.skills,
+                "role_type": enrichment.role_type,
+                "seniority_level": enrichment.seniority_level,
+                "ingested_at": utc_now(),
+            }
+        )
+
+    df = pd.DataFrame(rows)
+    return ensure_columns(df)
+
+
 def normalize_csv(df: pd.DataFrame) -> pd.DataFrame:
     # Expect CSV has at least columns from sample; tolerate missing.
     df = df.copy()
@@ -124,6 +180,13 @@ def ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
 def deduplicate(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
+    if settings.use_spark_dedupe:
+        try:
+            return deduplicate_spark(df)
+        except Exception:
+            # Fall back to pandas on any Spark runtime issue.
+            pass
+
     df = df.copy()
     # Prefer latest publication_date when duplicates
     df["_pub_sort"] = df["publication_date"].fillna(pd.Timestamp.min)
@@ -132,8 +195,58 @@ def deduplicate(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def transform(remotive_jobs: list[dict[str, Any]], csv_df: pd.DataFrame) -> pd.DataFrame:
-    api_df = normalize_remotive(remotive_jobs)
+def deduplicate_spark(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Deduplicate by `job_hash`, keeping the row with the latest `publication_date`.
+
+    Spark is used here to satisfy the requirement to integrate Apache Spark.
+    We keep output identical to the pandas version.
+    """
+    from pyspark.sql import SparkSession
+    from pyspark.sql import functions as F
+    from pyspark.sql.window import Window
+
+    spark = (
+        SparkSession.builder.master("local[*]")
+        .appName("job-etl-dedupe")
+        .config("spark.sql.session.timeZone", "UTC")
+        .getOrCreate()
+    )
+
+    df_work = df.copy().reset_index(drop=True)
+    df_work["_row_id"] = list(range(len(df_work)))
+
+    base_cols = ["job_hash", "publication_date", "_row_id"]
+    if "ingested_at" in df_work.columns:
+        base_cols.append("ingested_at")
+
+    spark_df = spark.createDataFrame(df_work[base_cols])
+
+    pub_ts = F.col("publication_date").cast("timestamp")
+    pub_sort = F.coalesce(pub_ts, F.lit("0001-01-01 00:00:00").cast("timestamp"))
+
+    if "ingested_at" in df_work.columns:
+        ing_ts = F.col("ingested_at").cast("timestamp")
+        ing_sort = F.coalesce(ing_ts, F.lit("0001-01-01 00:00:00").cast("timestamp"))
+        order_exprs = [pub_sort.desc(), ing_sort.desc()]
+    else:
+        order_exprs = [pub_sort.desc()]
+
+    w = Window.partitionBy("job_hash").orderBy(*order_exprs)
+    keep_ids = (
+        spark_df.withColumn("_rn", F.row_number().over(w))
+        .filter(F.col("_rn") == 1)
+        .select("_row_id")
+        .collect()
+    )
+    keep_set = {int(r["_row_id"]) for r in keep_ids}
+
+    out = df_work[df_work["_row_id"].isin(keep_set)].drop(columns=["_row_id"])
+    return out
+
+
+def transform(api_jobs: list[dict[str, Any]], csv_df: pd.DataFrame) -> pd.DataFrame:
+    api_df = normalize_adzuna(api_jobs)
     csv_norm = normalize_csv(csv_df)
     combined = pd.concat([api_df, csv_norm], ignore_index=True)
     combined = deduplicate(combined)

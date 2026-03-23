@@ -8,7 +8,7 @@ from typing import Any
 from kafka import KafkaProducer
 
 from app.config.settings import settings
-from app.pipeline.extract import fetch_remotive_jobs
+from app.pipeline.extract import fetch_adzuna_jobs
 from app.utils.helpers import normalize_whitespace, parse_datetime, sha256_hex
 from app.utils.logger import get_logger
 
@@ -21,10 +21,10 @@ def _load_state(path: str) -> dict[str, Any]:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
-        return {"seen_hashes": []}
+        return {"seen_hashes": [], "page": 1}
     except Exception:
         logger.exception("state_load_failed", extra={"extra": {"path": path}})
-        return {"seen_hashes": []}
+        return {"seen_hashes": [], "page": 1}
 
 
 def _save_state(path: str, state: dict[str, Any]) -> None:
@@ -37,10 +37,28 @@ def _save_state(path: str, state: dict[str, Any]) -> None:
 def _job_to_minimal_message(j: dict[str, Any]) -> dict[str, Any]:
     job_id = str(j.get("id") or "") or None
     title = normalize_whitespace(j.get("title"))
-    company = normalize_whitespace(j.get("company_name") or j.get("company"))
-    pub_dt = parse_datetime(j.get("publication_date") or j.get("date"))
-    url = normalize_whitespace(j.get("url") or j.get("job_url"))
+
+    company_obj = j.get("company") or {}
+    company = normalize_whitespace(
+        company_obj.get("display_name") if isinstance(company_obj, dict) else j.get("company")
+    )
+
+    location_obj = j.get("location") or {}
+    location = normalize_whitespace(
+        location_obj.get("display_name") if isinstance(location_obj, dict) else j.get("location")
+    )
+
+    pub_dt = parse_datetime(j.get("created") or j.get("publication_date") or j.get("date"))
+    url = normalize_whitespace(j.get("redirect_url") or j.get("url") or j.get("job_url"))
     desc = normalize_whitespace(j.get("description") or "")
+
+    category_obj = j.get("category") or {}
+    category = normalize_whitespace(
+        category_obj.get("label") if isinstance(category_obj, dict) else j.get("category")
+    )
+
+    is_remote = "remote" in (location or "").lower()
+
     base_for_hash = url or f"{title}|{company}|{pub_dt.isoformat() if pub_dt else ''}"
     job_hash = sha256_hex(base_for_hash)
 
@@ -50,9 +68,9 @@ def _job_to_minimal_message(j: dict[str, Any]) -> dict[str, Any]:
         "source": "api",
         "title": title,
         "company": company,
-        "location": normalize_whitespace(j.get("candidate_required_location") or j.get("location")),
-        "is_remote": True,
-        "category": normalize_whitespace(j.get("category")),
+        "location": location,
+        "is_remote": bool(is_remote),
+        "category": category,
         "publication_date": pub_dt.isoformat() if pub_dt else None,
         "job_url": url or None,
         "description": desc,
@@ -63,6 +81,7 @@ def main() -> int:
     state_path = settings.producer_state_path
     state = _load_state(state_path)
     seen = set(state.get("seen_hashes", []))
+    current_page = int(state.get("page", 1) or 1)
 
     producer = KafkaProducer(
         bootstrap_servers=settings.kafka_bootstrap_servers,
@@ -78,7 +97,10 @@ def main() -> int:
     )
     try:
         while True:
-            jobs = fetch_remotive_jobs()
+            jobs = fetch_adzuna_jobs(
+                start_page=current_page,
+                max_pages=settings.adzuna_pages_per_poll,
+            )
             new_count = 0
             for j in jobs:
                 msg = _job_to_minimal_message(j)
@@ -90,10 +112,17 @@ def main() -> int:
 
             producer.flush(timeout=30)
 
-            # Keep state bounded
-            if new_count:
-                state["seen_hashes"] = list(seen)[-5000:]
-                _save_state(state_path, state)
+            # Update producer state so we don't keep fetching the same page forever.
+            # If the API returns no results, reset to page 1.
+            if not jobs:
+                current_page = 1
+            else:
+                current_page = current_page + settings.adzuna_pages_per_poll
+
+            state["page"] = current_page
+            # Keep state bounded (avoid unbounded growth).
+            state["seen_hashes"] = list(seen)[-5000:]
+            _save_state(state_path, state)
 
             logger.info("poll_complete", extra={"extra": {"new_jobs_emitted": new_count}})
             time.sleep(max(5, int(settings.poll_seconds)))

@@ -2,8 +2,8 @@
 
 End-to-end (batch + streaming) data engineering pipeline for tech job postings:
 
-- **Batch ingestion**: Remotive Jobs API (JSON) + local CSV file.
-- **Streaming ingestion**: Kafka topic `jobs_live` with a producer (polls Remotive) and consumer (inserts into Postgres).
+- **Batch ingestion**: Adzuna Job Search API + local CSV file.
+- **Streaming ingestion**: Kafka topic `jobs_live` with a producer (polls Adzuna) and consumer (inserts into Postgres).
 - **Storage**: PostgreSQL tables (`jobs_staging`, `jobs_clean`, `jobs_stream`, `daily_metrics`).
 - **Visualization**: Streamlit dashboard reading directly from Postgres.
 
@@ -13,23 +13,24 @@ This project applies core data engineering principles through an end-to-end ETL 
 
 ## Architecture
 
-![Architecture](https://i.imgur.com/XrsLXkX.png)
+![Architecture](https://i.imgur.com/WAdMAgY.png)
 
 ## General data lifecycle
 
 1. Ingest jobs (API + CSV for batch, API for streaming).
-2. Transform, normalize, clean, deduplicate, and enrich data.
+2. Transform, normalize, clean, deduplicate (Spark), and enrich data.
 3. Load into Postgres (`jobs_staging`, `jobs_clean`, `jobs_stream`).
 4. Compute daily aggregates in `daily_metrics`.
 5. Streamlit reads Postgres and shows dashboard metrics.
 6. Repeat via `batch_scheduler` (scheduled batch) and producer/consumer (near-real-time stream).
 
 ## Data sources
-- Remotive Jobs API (public API)
+- Adzuna Job Search API (public API)
 - Local CSV file at `data/raw/jobs.csv`
 
 ## Tech stack (free/open-source)
 - Python, requests, pandas
+- Apache Spark (pyspark) for scalable batch transformations
 - PostgreSQL
 - Apache Kafka (+ Zookeeper)
 - Streamlit

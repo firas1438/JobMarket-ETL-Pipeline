@@ -6,15 +6,15 @@ from app.pipeline.transform import UNIFIED_COLUMNS, transform
 
 
 def test_transform_outputs_unified_schema():
-    remotive = [
+    adzuna = [
         {
             "id": 123,
             "title": "Data Engineer",
-            "company_name": "Acme",
-            "candidate_required_location": "Worldwide",
-            "category": "Software Development",
-            "publication_date": "2026-03-10",
-            "url": "https://remotive.com/jobs/123",
+            "company": {"display_name": "Acme"},
+            "location": {"display_name": "Remote"},
+            "category": {"label": "Software Development"},
+            "created": "2026-03-10",
+            "redirect_url": "https://example.com/jobs/123",
             "description": "Python SQL Docker Kafka",
         }
     ]
@@ -35,7 +35,7 @@ def test_transform_outputs_unified_schema():
         ]
     )
 
-    out = transform(remotive, csv_df)
+    out = transform(adzuna, csv_df)
     assert list(out.columns) == UNIFIED_COLUMNS
     assert set(out["source"].unique()) == {"api", "csv"}
 

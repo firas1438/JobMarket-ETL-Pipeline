@@ -30,9 +30,31 @@ class Settings:
     poll_seconds: int = int(os.getenv("POLL_SECONDS", "120"))
     producer_state_path: str = os.getenv("PRODUCER_STATE_PATH", "producer_state.json")
 
-    remotive_api_url: str = os.getenv("REMOTIVE_API_URL", "https://remotive.com/api/remote-jobs")
-    # Remotive generally works without an API key; kept for PDF/checklist completeness.
-    remotive_api_key: str | None = os.getenv("REMOTIVE_API_KEY") or None
+    # Adzuna API (replaces Remotive).
+    # Only credentials live in the .env files; everything else is configured here.
+    adzuna_api_base_url: str = "https://api.adzuna.com/v1/api/jobs"
+    adzuna_app_id: str = os.getenv("ADZUNA_APP_ID", "")
+    adzuna_app_key: str = os.getenv("ADZUNA_APP_KEY", "")
+    adzuna_country: str = "us"
+
+    # Search query for "mostly tech".
+    adzuna_what: str = "software engineer"
+    # Adzuna's `where` supports global search.
+    # Note: Adzuna's endpoint is country-scoped via the URL path; we keep `us`
+    # here and use `where=world` to broaden results.
+    adzuna_where: str = "world"
+
+    adzuna_results_per_page: int = 100
+    # Batch should fetch a lot, but not run forever on every execution.
+    adzuna_batch_max_pages: int = 20
+    # Producer fetches a small number of pages per poll.
+    adzuna_pages_per_poll: int = 1
+
+    # Unused by default (batch uses max_pages); left for backward compatibility.
+    adzuna_max_jobs: int = 0
+
+    # Use Spark for core dataframe operations (e.g., deduplication) when available.
+    use_spark_dedupe: bool = os.getenv("USE_SPARK_DEDUPE", "1").lower() in ("1", "true", "yes")
 
 
 settings = Settings()
