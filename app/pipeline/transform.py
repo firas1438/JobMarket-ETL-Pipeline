@@ -67,6 +67,61 @@ def normalize_remotive(raw_jobs: list[dict[str, Any]]) -> pd.DataFrame:
     return ensure_columns(df)
 
 
+def normalize_adzuna(raw_jobs: list[dict[str, Any]]) -> pd.DataFrame:
+    rows: list[dict[str, Any]] = []
+    for j in raw_jobs:
+        job_id = str(j.get("id") or "") or None
+        title = normalize_whitespace(j.get("title"))
+
+        company_obj = j.get("company") or {}
+        company = normalize_whitespace(
+            company_obj.get("display_name") if isinstance(company_obj, dict) else j.get("company")
+        )
+
+        location_obj = j.get("location") or {}
+        location = normalize_whitespace(
+            location_obj.get("display_name") if isinstance(location_obj, dict) else j.get("location")
+        )
+
+        is_remote = "remote" in (location or "").lower()
+
+        category_obj = j.get("category") or {}
+        category = normalize_whitespace(
+            category_obj.get("label") if isinstance(category_obj, dict) else j.get("category")
+        )
+
+        pub_dt = parse_datetime(j.get("created") or j.get("publication_date") or j.get("date"))
+        url = normalize_whitespace(j.get("redirect_url") or j.get("url") or j.get("job_url"))
+        desc = normalize_whitespace(j.get("description") or "")
+
+        base_for_hash = url or f"{title}|{company}|{pub_dt.isoformat() if pub_dt else ''}"
+        job_hash = sha256_hex(base_for_hash)
+
+        enrichment = enrich_job(title, desc)
+        rows.append(
+            {
+                "job_hash": job_hash,
+                "job_id": job_id,
+                "source": "api",
+                "title": title,
+                "company": company,
+                "location": location,
+                "is_remote": bool(is_remote),
+                "category": category,
+                "publication_date": pub_dt,
+                "job_url": url or None,
+                "description": desc,
+                "skills_extracted": enrichment.skills,
+                "role_type": enrichment.role_type,
+                "seniority_level": enrichment.seniority_level,
+                "ingested_at": utc_now(),
+            }
+        )
+
+    df = pd.DataFrame(rows)
+    return ensure_columns(df)
+
+
 def normalize_csv(df: pd.DataFrame) -> pd.DataFrame:
     # Expect CSV has at least columns from sample; tolerate missing.
     df = df.copy()
@@ -132,8 +187,8 @@ def deduplicate(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def transform(remotive_jobs: list[dict[str, Any]], csv_df: pd.DataFrame) -> pd.DataFrame:
-    api_df = normalize_remotive(remotive_jobs)
+def transform(api_jobs: list[dict[str, Any]], csv_df: pd.DataFrame) -> pd.DataFrame:
+    api_df = normalize_adzuna(api_jobs)
     csv_norm = normalize_csv(csv_df)
     combined = pd.concat([api_df, csv_norm], ignore_index=True)
     combined = deduplicate(combined)

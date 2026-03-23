@@ -22,18 +22,43 @@ class _FakeSession:
     def __init__(self, payload: dict):
         self.payload = payload
 
-    def get(self, url, headers=None, timeout=None):
+    def get(self, url, headers=None, params=None, timeout=None, **_kwargs):
         return _FakeResponse(self.payload)
 
     def mount(self, *args, **kwargs):
         return None
 
 
-def test_fetch_remotive_jobs_parses_jobs(monkeypatch):
-    payload = {"jobs": [{"id": 1, "title": "Data Engineer"}]}
+def test_fetch_adzuna_jobs_parses_jobs(monkeypatch):
+    payload = {
+        "results": [
+            {
+                "id": 1,
+                "title": "Data Engineer",
+                "company": {"display_name": "Acme"},
+                "location": {"display_name": "Remote"},
+                "created": "2026-03-10",
+                "redirect_url": "https://example.com/jobs/1",
+                "description": "Python SQL Docker",
+            }
+        ]
+    }
+
+    class _FakeSettings:
+        adzuna_app_id = "test"
+        adzuna_app_key = "test"
+        adzuna_api_base_url = "https://api.adzuna.com/v1/api/jobs"
+        adzuna_country = "us"
+        adzuna_what = "software engineer"
+        adzuna_where = "remote"
+        adzuna_results_per_page = 100
+        adzuna_batch_max_pages = 10
+        adzuna_pages_per_poll = 1
+        adzuna_max_jobs = 0
 
     monkeypatch.setattr(extract, "_requests_session_with_retry", lambda: _FakeSession(payload))
-    jobs = extract.fetch_remotive_jobs(limit=10)
+    monkeypatch.setattr(extract, "settings", _FakeSettings())
+    jobs = extract.fetch_adzuna_jobs(max_jobs=10)
 
     assert isinstance(jobs, list)
     assert jobs[0]["id"] == 1
